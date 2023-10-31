@@ -10,10 +10,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.StringJoiner;
+import java.util.*;
 
 @Component
 @Slf4j
@@ -82,9 +79,18 @@ public class ExcelToDbBean {
             fileName = fileName.substring(0, pos);
         }
         String tableName = fileName;
-        String createTableSQL = "CREATE TABLE " + tableName + " (" + sqlColumns.toString() + ")";
-        log.info("Table name ==> {}",createTableSQL);
-        jdbcTemplate.execute(createTableSQL);
+        String createTableSQL = "";
+        if (doesTableExist(tableName)) {
+            String truncateTableSQL = "TRUNCATE TABLE " + tableName;
+            jdbcTemplate.execute(truncateTableSQL);
+        } else {
+            createTableSQL = "CREATE TABLE " + tableName + " (" + sqlColumns.toString() + ")";
+            jdbcTemplate.execute(createTableSQL);
+        }
+
+//        String createTableSQL = "CREATE TABLE " + tableName + " (" + sqlColumns.toString() + ")";
+//        log.info("Table name ==> {}",createTableSQL);
+//        jdbcTemplate.execute(createTableSQL);
 
         // Insert data in batches
         int batchCount = 0;
@@ -95,7 +101,18 @@ public class ExcelToDbBean {
 
             while (cellIterator.hasNext()) {
                 Cell cell = cellIterator.next();
-                columnValues.add("'" + cell.toString() + "'");
+                Object value;
+                if (cell.getCellType() == CellType.NUMERIC) {
+                    double numericValue = cell.getNumericCellValue();
+                    if (numericValue == Math.floor(numericValue)) {
+                        value = (int) numericValue;
+                    } else {
+                        value = numericValue;
+                    }
+                } else {
+                    value = cell.toString();
+                }
+                columnValues.add("'" + value + "'");
             }
 
             String insertSQL = "INSERT INTO " + tableName + " VALUES (" + columnValues.toString() + ")";
@@ -113,4 +130,11 @@ public class ExcelToDbBean {
     private String normalizeColumnName(String columnName) {
         return columnName.replaceAll("\\s+", "_").replaceAll("[^a-zA-Z0-9_]", "").toLowerCase();
     }
+
+    private boolean doesTableExist(String tableName) {
+        String sql = "SHOW TABLES LIKE ?";
+        List<String> result = jdbcTemplate.queryForList(sql, new Object[]{tableName}, String.class);
+        return !result.isEmpty();
+    }
+
 }
